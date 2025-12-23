@@ -27,6 +27,14 @@
             border-radius: 24px;
             border: 1px solid #444;
             box-shadow: 0 4px 15px rgba(0,0,0,0.5);
+            z-index: 100;
+        }
+        .controls-hint a {
+            color: #3498db;
+            text-decoration: none;
+        }
+        .controls-hint a:hover {
+            text-decoration: underline;
         }
     </style>
 </head>
@@ -39,7 +47,8 @@
 
     <div class="controls-hint">
         <b>Interruptor:</b> Cima (Off) / Baixo (On) | <b>Rato:</b> Rodar Câmara<br>
-        <b>Roda:</b> Girar Encoder | <b>Clique no Knob:</b> Botão Sorteio
+        <b>Roda:</b> Girar Encoder | <b>Clique no Knob:</b> Botão Sorteio<br>
+        Projeto: <a href="https://github.com/ivansouza/BingoNino/" target="_blank">https://github.com/ivansouza/BingoNino/</a>
     </div>
 
     <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
@@ -90,6 +99,7 @@
             '>': [0x08, 0x04, 0x02, 0x01, 0x02, 0x04, 0x08],
             '<': [0x02, 0x04, 0x08, 0x10, 0x08, 0x04, 0x02],
             '.': [0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x04],
+            ':': [0x00, 0x04, 0x00, 0x00, 0x04, 0x00, 0x00],
             ' ': [0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00]
         };
 
@@ -246,7 +256,7 @@
             toggleLever.position.z = 0.3;
             leverContainer.add(toggleLever);
             
-            // CORREÇÃO: Inicializa em OFF (Apontando para cima / -Math.PI / 5)
+            // Inicializa em OFF (Apontando para cima / -Math.PI / 5)
             leverContainer.rotation.x = -Math.PI / 5; 
             leverContainer.name = "power_switch";
             toggleLever.name = "power_switch_handle";

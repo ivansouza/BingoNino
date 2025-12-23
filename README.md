@@ -43,5 +43,5 @@ Conecte os componentes aos pinos do Arduino conforme a configuração definida n
 
 Este software é distribuído sob a licença **BSD New License**.
 
-* **Copyright (c) 2011-2015, Ivan Tadeu dos Santos Souza.**
+* **Copyright (c) 2011-2015, Ivan Souza.**
 * A redistribuição e o uso em formatos de código-fonte ou binários são permitidos, desde que as condições da licença (como a manutenção do aviso de copyright) sejam respeitadas.

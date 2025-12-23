@@ -1,6 +1,6 @@
 # BingoNino 🎰
 
-O **BingoNino** é uma máquina de bingo eletrônica baseada na plataforma Arduino, desenvolvida por Ivan Tadeu dos Santos Souza. O sistema automatiza o sorteio de pedras de bingo (75 números) e utiliza componentes visuais e sonoros para proporcionar uma experiência interativa e completa.
+O **BingoNino** é uma máquina de bingo eletrônica baseada na plataforma Arduino, desenvolvida por Ivan Souza. O sistema automatiza o sorteio de pedras de bingo (75 números) e utiliza componentes visuais e sonoros para proporcionar uma experiência interativa e completa.
 
 ## 🚀 Funcionalidades
 

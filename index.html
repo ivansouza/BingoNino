@@ -71,28 +71,16 @@
         <div id="status-msg"></div>
     </div>
 
-    <!-- Importação de Módulos -->
     <script type="module">
         import * as THREE from "https://cdn.jsdelivr.net/npm/three@0.128.0/build/three.module.js";
-        import { initializeApp } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-app.js";
-        import { getAuth, signInAnonymously, onAuthStateChanged, signInWithCustomToken } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js";
-        import { getFirestore, doc, setDoc, getDoc } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
 
-        // --- FIREBASE CONFIG ---
-        const firebaseConfig = JSON.parse(__firebase_config);
-        const app = initializeApp(firebaseConfig);
-        const auth = getAuth(app);
-        const db = getFirestore(app);
-        const appId = typeof __app_id !== 'undefined' ? __app_id : 'bingo-nino-3d';
-
-        // --- BINGO LOGIC ---
+        // --- LÓGICA DO BINGO ---
         const B_MAX = 75;
         let anArray = Array.from({length: B_MAX}, (_, i) => i + 1);
         let numsort = -1;
         let number = 0;
         let bootState = -1; 
         let powerOn = false;
-        let user = null;
 
         const FONT_5x8 = {
             '0': [0x0E, 0x11, 0x13, 0x15, 0x19, 0x11, 0x0E], '1': [0x04, 0x0C, 0x04, 0x04, 0x04, 0x04, 0x0E],
@@ -122,7 +110,7 @@
             [0x1F, 0x1F, 0x1F, 0x00, 0x00, 0x00, 0x1F, 0x1F], [0x1F, 0x00, 0x00, 0x00, 0x00, 0x1F, 0x1F, 0x1F]  
         ];
 
-        // --- SCENE VARIABLES ---
+        // --- VARIÁVEIS DA CENA ---
         let scene, camera, renderer, box, encoderKnob, toggleLever, lcdTexture, lcdContext, lcdMesh;
         let targetRot = { x: 0.4, y: -0.5 };
         let isDown = false, isDraggingEncoder = false, lastX, lastY, startDragY;
@@ -135,37 +123,25 @@
             }
         }
 
-        async function saveView() {
-            if (!user) return;
+        function saveView() {
+            localStorage.setItem('bingo_nino_view_settings', JSON.stringify({
+                targetRotX: targetRot.x,
+                targetRotY: targetRot.y,
+                zoom: camera.position.z
+            }));
             const status = document.getElementById('status-msg');
-            status.innerText = "A gravar vista...";
-            try {
-                const viewPath = doc(db, 'artifacts', appId, 'users', user.uid, 'settings', 'view');
-                await setDoc(viewPath, {
-                    targetRotX: targetRot.x,
-                    targetRotY: targetRot.y,
-                    zoom: camera.position.z
-                });
-                status.innerText = "Vista gravada!";
-                setTimeout(() => status.innerText = "", 2000);
-            } catch (e) {
-                console.error(e);
-                status.innerText = "Erro ao gravar.";
-            }
+            status.innerText = "Vista gravada localmente!";
+            setTimeout(() => status.innerText = "", 2000);
         }
 
-        async function loadSavedView() {
-            if (!user) return;
-            try {
-                const viewPath = doc(db, 'artifacts', appId, 'users', user.uid, 'settings', 'view');
-                const snap = await getDoc(viewPath);
-                if (snap.exists()) {
-                    const data = snap.data();
-                    targetRot.x = data.targetRotX;
-                    targetRot.y = data.targetRotY;
-                    camera.position.z = data.zoom;
-                }
-            } catch (e) { console.error("Erro ao carregar vista", e); }
+        function loadSavedView() {
+            const localData = localStorage.getItem('bingo_nino_view_settings');
+            if (localData) {
+                const data = JSON.parse(localData);
+                targetRot.x = data.targetRotX;
+                targetRot.y = data.targetRotY;
+                camera.position.z = data.zoom;
+            }
         }
 
         function init3D() {
@@ -192,28 +168,27 @@
             box = new THREE.Mesh(boxGeom, boxMat);
             scene.add(box);
 
-            // LCD TEXTURE
+            // LCD
             const canvas = document.createElement('canvas');
             canvas.width = 512; canvas.height = 128;
             lcdContext = canvas.getContext('2d');
             lcdTexture = new THREE.CanvasTexture(canvas);
             
-            // BEZEL (MOLDURA) PROTUBERANTE
+            // MOLDURA DO LCD (Bezel) - PROTUBERANTE
             const bezelDepth = 0.6;
-            const bezelZ = 1.25 + bezelDepth/2; // Metade da profundidade da caixa + metade do bezel
             const bezel = new THREE.Mesh(
                 new THREE.BoxGeometry(6.2, 2.2, bezelDepth),
                 new THREE.MeshPhongMaterial({ color: 0x080808, shininess: 100, specular: 0x222222 })
             );
-            bezel.position.set(0, 1.3, 1.25); // Centralizado na borda frontal da caixa
+            bezel.position.set(0, 1.3, 1.25); 
             box.add(bezel);
 
-            // LCD MESH - POSICIONADO NA FRENTE DO BEZEL
-            // z = (posição do bezel) + (metade da sua profundidade) + pequeno offset
+            // LCD MESH
             lcdMesh = new THREE.Mesh(
                 new THREE.PlaneGeometry(5.6, 1.6),
                 new THREE.MeshLambertMaterial({ map: lcdTexture, emissive: 0x000000, emissiveIntensity: 0.0 })
             );
+            // Posicionado na face frontal do bezel
             lcdMesh.position.set(0, 1.3, 1.25 + (bezelDepth / 2) + 0.01); 
             box.add(lcdMesh);
 
@@ -254,7 +229,7 @@
             toggleLever = new THREE.Mesh(new THREE.CylinderGeometry(0.06, 0.12, 0.75, 16), new THREE.MeshPhongMaterial({ color: 0xcc0000, shininess: 150, specular: 0xff4444 }));
             toggleLever.rotation.x = Math.PI / 2; toggleLever.position.z = 0.3;
             leverContainer.add(toggleLever);
-            leverContainer.rotation.x = -Math.PI / 5; // Começa em OFF
+            leverContainer.rotation.x = -Math.PI / 5; // Posição OFF inicial
             leverContainer.name = "power_switch"; toggleLever.name = "power_switch_handle";
 
             // Eventos
@@ -265,6 +240,7 @@
             window.addEventListener('resize', onResize);
             document.getElementById('btn-save-view').addEventListener('click', saveView);
 
+            loadSavedView();
             drawLCD();
             animate();
         }
@@ -418,17 +394,7 @@
         function onResize() { camera.aspect = window.innerWidth / window.innerHeight; camera.updateProjectionMatrix(); renderer.setSize(window.innerWidth, window.innerHeight); }
         function animate() { requestAnimationFrame(animate); box.rotation.y += (targetRot.y - box.rotation.y) * 0.1; box.rotation.x += (targetRot.x - box.rotation.x) * 0.1; renderer.render(scene, camera); }
 
-        const initAuth = async () => {
-            if (typeof __initial_auth_token !== 'undefined' && __initial_auth_token) { await signInWithCustomToken(auth, __initial_auth_token); } 
-            else { await signInAnonymously(auth); }
-        };
-
-        onAuthStateChanged(auth, (u) => {
-            user = u;
-            if (user) { loadSavedView(); }
-        });
-
-        window.onload = () => { initAuth(); init3D(); };
+        window.onload = () => { init3D(); };
     </script>
 </body>
 </html>

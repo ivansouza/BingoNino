@@ -1,0 +1,479 @@
+<!DOCTYPE html>
+<html lang="pt-pt">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>BingoNino 3D - Simulador Fiel (.ino)</title>
+    <style>
+        body { margin: 0; overflow: hidden; background-color: #0f0f12; font-family: 'Courier New', Courier, monospace; }
+        #ui-overlay {
+            position: absolute;
+            top: 20px;
+            left: 20px;
+            color: white;
+            pointer-events: none;
+            text-shadow: 0 0 10px rgba(0, 0, 0, 0.8);
+        }
+        .controls-hint {
+            position: absolute;
+            bottom: 20px;
+            left: 50%;
+            transform: translateX(-50%);
+            color: #aaa;
+            font-size: 12px;
+            text-align: center;
+            background: rgba(0,0,0,0.85);
+            padding: 12px 24px;
+            border-radius: 24px;
+            border: 1px solid #444;
+            box-shadow: 0 4px 15px rgba(0,0,0,0.5);
+        }
+    </style>
+</head>
+<body>
+
+    <div id="ui-overlay">
+        <h1 style="margin:0; font-size: 20px; color: #9ab50b;">BingoNino v1.0</h1>
+        <p style="margin:2px 0; opacity: 0.6; font-size: 12px;">Firmware original por Ivan Souza</p>
+    </div>
+
+    <div class="controls-hint">
+        <b>Interruptor:</b> Cima (Off) / Baixo (On) | <b>Rato:</b> Rodar Câmara<br>
+        <b>Roda:</b> Girar Encoder | <b>Clique no Knob:</b> Botão Sorteio
+    </div>
+
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+    
+    <script>
+        /** * LÓGICA DO ARDUINO (TRANSPOSIÇÃO DO .INO) */
+        const B_MAX = 75;
+        let anArray = Array.from({length: B_MAX}, (_, i) => i + 1);
+        let numsort = -1;
+        let number = 0;
+        let bootState = -1; // -1: Desligado, 0: Logo, 1: Espera Botão, 2: Jogo
+        let powerOn = false;
+
+        // Fontes 5x8 (Bitmap) para o efeito pontilhado real
+        const FONT_5x8 = {
+            '0': [0x0E, 0x11, 0x13, 0x15, 0x19, 0x11, 0x0E],
+            '1': [0x04, 0x0C, 0x04, 0x04, 0x04, 0x04, 0x0E],
+            '2': [0x0E, 0x11, 0x01, 0x02, 0x04, 0x08, 0x1F],
+            '3': [0x1F, 0x02, 0x04, 0x02, 0x01, 0x11, 0x0E],
+            '4': [0x02, 0x06, 0x0A, 0x12, 0x1F, 0x02, 0x02],
+            '5': [0x1F, 0x10, 0x1E, 0x01, 0x01, 0x11, 0x0E],
+            '6': [0x0E, 0x11, 0x10, 0x1E, 0x11, 0x11, 0x0E],
+            '7': [0x1F, 0x01, 0x02, 0x04, 0x08, 0x08, 0x08],
+            '8': [0x0E, 0x11, 0x11, 0x0E, 0x11, 0x11, 0x0E],
+            '9': [0x0E, 0x11, 0x11, 0x0F, 0x01, 0x02, 0x0C],
+            'A': [0x04, 0x0A, 0x11, 0x11, 0x1F, 0x11, 0x11],
+            'B': [0x1E, 0x11, 0x11, 0x1E, 0x11, 0x11, 0x1E],
+            'I': [0x0E, 0x04, 0x04, 0x04, 0x04, 0x04, 0x0E],
+            'N': [0x11, 0x19, 0x15, 0x13, 0x11, 0x11, 0x11],
+            'G': [0x0E, 0x11, 0x10, 0x17, 0x11, 0x11, 0x0E],
+            'O': [0x0E, 0x11, 0x11, 0x11, 0x11, 0x11, 0x0E],
+            'S': [0x0F, 0x10, 0x10, 0x0E, 0x01, 0x01, 0x1E],
+            'u': [0x00, 0x00, 0x11, 0x11, 0x11, 0x13, 0x0D],
+            'z': [0x00, 0x00, 0x1F, 0x02, 0x04, 0x08, 0x1F],
+            'a': [0x00, 0x00, 0x0E, 0x01, 0x0F, 0x11, 0x0F],
+            'n': [0x00, 0x00, 0x16, 0x19, 0x11, 0x11, 0x11],
+            'y': [0x00, 0x00, 0x11, 0x11, 0x0F, 0x01, 0x0E],
+            'v': [0x00, 0x00, 0x11, 0x11, 0x11, 0x0A, 0x04],
+            'p': [0x00, 0x00, 0x16, 0x19, 0x16, 0x10, 0x10],
+            'e': [0x00, 0x00, 0x0E, 0x11, 0x1F, 0x10, 0x0E],
+            'r': [0x00, 0x00, 0x0B, 0x0C, 0x08, 0x08, 0x08],
+            't': [0x00, 0x04, 0x0E, 0x04, 0x04, 0x05, 0x02],
+            'o': [0x00, 0x00, 0x0E, 0x11, 0x11, 0x11, 0x0E],
+            'b': [0x10, 0x10, 0x16, 0x19, 0x11, 0x11, 0x1E],
+            'i': [0x04, 0x00, 0x0C, 0x04, 0x04, 0x04, 0x0E],
+            'c': [0x00, 0x00, 0x0E, 0x10, 0x10, 0x11, 0x0E],
+            '/': [0x00, 0x01, 0x02, 0x04, 0x08, 0x10, 0x00],
+            '>': [0x08, 0x04, 0x02, 0x01, 0x02, 0x04, 0x08],
+            '<': [0x02, 0x04, 0x08, 0x10, 0x08, 0x04, 0x02],
+            '.': [0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x04],
+            ' ': [0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00]
+        };
+
+        const customChars = [
+            [0x0F, 0x1F, 0x1F, 0x1F, 0x1F, 0x1F, 0x1F, 0x1F], 
+            [0x1F, 0x1F, 0x1F, 0x00, 0x00, 0x00, 0x00, 0x00], 
+            [0x1E, 0x1F, 0x1F, 0x1F, 0x1F, 0x1F, 0x1F, 0x1F], 
+            [0x1F, 0x1F, 0x1F, 0x1F, 0x1F, 0x1F, 0x1F, 0x0F], 
+            [0x00, 0x00, 0x00, 0x00, 0x00, 0x1F, 0x1F, 0x1F], 
+            [0x1F, 0x1F, 0x1F, 0x1F, 0x1F, 0x1F, 0x1F, 0x1E], 
+            [0x1F, 0x1F, 0x1F, 0x00, 0x00, 0x00, 0x1F, 0x1F], 
+            [0x1F, 0x00, 0x00, 0x00, 0x00, 0x1F, 0x1F, 0x1F]  
+        ];
+
+        function shuffle(array) {
+            for (let i = array.length - 1; i > 0; i--) {
+                const j = Math.floor(Math.random() * (i + 1));
+                [array[i], array[j]] = [array[j], array[i]];
+            }
+        }
+
+        /** * RENDERIZAÇÃO 3D (THREE.JS) */
+        let scene, camera, renderer, box, encoderKnob, toggleLever, lcdTexture, lcdContext, lcdMesh;
+        let targetRot = { x: 0.4, y: -0.5 };
+        let isDown = false, lastX, lastY;
+
+        function init3D() {
+            scene = new THREE.Scene();
+            scene.background = new THREE.Color(0x0a0a12);
+
+            camera = new THREE.PerspectiveCamera(35, window.innerWidth / window.innerHeight, 0.1, 1000);
+            camera.position.set(0, 0, 15);
+
+            renderer = new THREE.WebGLRenderer({ antialias: true });
+            renderer.setSize(window.innerWidth, window.innerHeight);
+            renderer.setPixelRatio(window.devicePixelRatio);
+            document.body.appendChild(renderer.domElement);
+
+            // ILUMINAÇÃO REFINADA
+            scene.add(new THREE.HemisphereLight(0xffffff, 0x444444, 0.6));
+            const mainLight = new THREE.DirectionalLight(0xffffff, 1.0);
+            mainLight.position.set(5, 10, 7);
+            scene.add(mainLight);
+            const fillLight = new THREE.PointLight(0x3498db, 0.4);
+            fillLight.position.set(-10, 0, 10);
+            scene.add(fillLight);
+
+            // GABINETE
+            const boxGeom = new THREE.BoxGeometry(8, 5.5, 2.5);
+            const boxMat = new THREE.MeshPhongMaterial({ 
+                color: 0x1a1a1a, 
+                shininess: 40,
+                specular: 0x333333 
+            });
+            box = new THREE.Mesh(boxGeom, boxMat);
+            scene.add(box);
+
+            // LCD
+            const canvas = document.createElement('canvas');
+            canvas.width = 512;
+            canvas.height = 128;
+            lcdContext = canvas.getContext('2d');
+            lcdTexture = new THREE.CanvasTexture(canvas);
+            
+            lcdMesh = new THREE.Mesh(
+                new THREE.PlaneGeometry(5.6, 1.6),
+                new THREE.MeshLambertMaterial({ 
+                    map: lcdTexture,
+                    emissive: 0x000000, 
+                    emissiveIntensity: 0.0
+                })
+            );
+            lcdMesh.position.set(0, 1.3, 1.26);
+            box.add(lcdMesh);
+
+            const bezel = new THREE.Mesh(
+                new THREE.BoxGeometry(6, 2, 0.1),
+                new THREE.MeshPhongMaterial({ color: 0x0a0a0a, shininess: 100, specular: 0x222222 })
+            );
+            bezel.position.set(0, 1.3, 1.2);
+            box.add(bezel);
+
+            // ENCODER (Lado Direito)
+            const encGroup = new THREE.Group();
+            encGroup.position.set(1.5, -1.3, 1.2);
+            box.add(encGroup);
+
+            const encBase = new THREE.Mesh(
+                new THREE.CylinderGeometry(0.8, 0.8, 0.2, 32),
+                new THREE.MeshPhongMaterial({ color: 0x222222 })
+            );
+            encBase.rotation.x = Math.PI / 2;
+            encGroup.add(encBase);
+
+            encoderKnob = new THREE.Mesh(
+                new THREE.CylinderGeometry(0.65, 0.65, 0.8, 32),
+                new THREE.MeshPhongMaterial({ color: 0x050505, shininess: 120, specular: 0x666666 })
+            );
+            encoderKnob.rotation.x = Math.PI / 2;
+            encoderKnob.position.z = 0.4;
+            encGroup.add(encoderKnob);
+
+            const indicator = new THREE.Mesh(
+                new THREE.SphereGeometry(0.06, 8, 8),
+                new THREE.MeshBasicMaterial({ color: 0xffffff })
+            );
+            indicator.position.set(0, 0.45, 0.35);
+            encoderKnob.add(indicator);
+
+            // BOTÃO LIGA/DESLIGA (Lado Esquerdo)
+            const powerGroup = new THREE.Group();
+            powerGroup.position.set(-1.8, -1.3, 1.25);
+            box.add(powerGroup);
+
+            // Placa Metálica com Marcações On/Off
+            const plateCanvas = document.createElement('canvas');
+            plateCanvas.width = 64;
+            plateCanvas.height = 128;
+            const pCtx = plateCanvas.getContext('2d');
+            pCtx.fillStyle = '#bdc3c7';
+            pCtx.fillRect(0, 0, 64, 128);
+            pCtx.fillStyle = '#2c3e50';
+            pCtx.font = 'bold 22px Arial';
+            pCtx.textAlign = 'center';
+            pCtx.fillText('Off', 32, 35); // OFF (Topo)
+            pCtx.fillText('On', 32, 115);  // ON (Baixo)
+            const plateTexture = new THREE.CanvasTexture(plateCanvas);
+
+            const plateGeom = new THREE.BoxGeometry(0.8, 1.1, 0.05);
+            const plateMat = new THREE.MeshPhongMaterial({ map: plateTexture, shininess: 100, specular: 0xffffff });
+            const plate = new THREE.Mesh(plateGeom, plateMat);
+            powerGroup.add(plate);
+
+            const nutGeom = new THREE.CylinderGeometry(0.25, 0.25, 0.15, 6);
+            const nutMat = new THREE.MeshPhongMaterial({ color: 0x7f8c8d, shininess: 150, specular: 0xffffff });
+            const nut = new THREE.Mesh(nutGeom, nutMat);
+            nut.rotation.x = Math.PI / 2;
+            nut.position.z = 0.1;
+            powerGroup.add(nut);
+
+            // Alavanca Vermelha (Toggle Lever)
+            const leverContainer = new THREE.Group();
+            leverContainer.position.z = 0.2;
+            powerGroup.add(leverContainer);
+
+            const leverGeom = new THREE.CylinderGeometry(0.06, 0.12, 0.75, 16);
+            const leverMat = new THREE.MeshPhongMaterial({ 
+                color: 0xcc0000, 
+                shininess: 150, 
+                specular: 0xff4444 
+            });
+            toggleLever = new THREE.Mesh(leverGeom, leverMat);
+            toggleLever.rotation.x = Math.PI / 2;
+            toggleLever.position.z = 0.3;
+            leverContainer.add(toggleLever);
+            
+            // CORREÇÃO: Inicializa em OFF (Apontando para cima / -Math.PI / 5)
+            leverContainer.rotation.x = -Math.PI / 5; 
+            leverContainer.name = "power_switch";
+            toggleLever.name = "power_switch_handle";
+
+            window.addEventListener('pointerdown', onDown);
+            window.addEventListener('pointermove', onMove);
+            window.addEventListener('pointerup', () => isDown = false);
+            window.addEventListener('wheel', (e) => onWheel(e.deltaY > 0 ? 1 : -1), { passive: true });
+            window.addEventListener('resize', onResize);
+
+            drawLCD();
+            animate();
+        }
+
+        /** * RENDERIZAÇÃO PONTILHADA DO LCD */
+        function drawLCD() {
+            const ctx = lcdContext;
+            
+            if (!powerOn) {
+                // LCD DESLIGADO (Preto)
+                ctx.fillStyle = "#0a0c05"; 
+                ctx.fillRect(0, 0, 512, 128);
+                lcdMesh.material.emissiveIntensity = 0.0;
+                lcdTexture.needsUpdate = true;
+                return;
+            }
+
+            // LCD LIGADO (Verde Retroiluminado)
+            lcdMesh.material.emissiveIntensity = 0.2;
+            ctx.fillStyle = "#94b108"; 
+            ctx.fillRect(0, 0, 512, 128);
+
+            const cw = 512/16;
+            const ch = 128/2;
+            const y0 = 15;
+            const y1 = 64;
+
+            // Pixels inativos (fantasma)
+            ctx.fillStyle = "rgba(0, 0, 0, 0.08)";
+            for(let c=0; c<16; c++) {
+                render5x8Dots(ctx, null, c*cw+4, y0, cw-8, ch-16);
+                render5x8Dots(ctx, null, c*cw+4, y1, cw-8, ch-16);
+            }
+
+            // Pixels ativos (pretos)
+            ctx.fillStyle = "rgba(0, 0, 0, 0.85)";
+
+            if (bootState === 0) {
+                renderString("   B I N G O    ", 0, y0);
+                renderString(" by Ivan Souza  ", 0, y1);
+            } 
+            else if (bootState === 1) {
+                renderString(" Aperte o botao ", 0, y0);
+                renderString("  para Iniciar  ", 0, y1);
+            } 
+            else if (bootState === 2) {
+                const letra = "BINGO";
+                const kk = number;
+                renderString((kk + 1) + "/75", 0, y0);
+                const numletra = Math.floor((anArray[kk] * 5) / 76);
+                renderString(letra[numletra], 7, y0);
+                if (kk > 0) {
+                    const numletraant = Math.floor((anArray[kk-1] * 5) / 76);
+                    renderString(letra[numletraant] + anArray[kk-1], 2, y1);
+                }
+                drawBigNumber(anArray[kk], 512 * 0.6, y0, y1);
+            }
+
+            lcdTexture.needsUpdate = true;
+        }
+
+        function renderString(str, startCol, yPos) {
+            const cw = 512 / 16;
+            for (let i = 0; i < str.length; i++) {
+                const char = str[i];
+                const mask = FONT_5x8[char] || FONT_5x8[' '];
+                render5x8Dots(lcdContext, mask, (startCol + i) * cw + 4, yPos, cw - 8, 128 / 2 - 16);
+            }
+        }
+
+        function render5x8Dots(ctx, mask, x, y, width, height) {
+            const dotSize = width / 6.5;
+            const dotSpacing = width / 5;
+            const dotYSpacing = height / 8;
+            for (let row = 0; row < 8; row++) {
+                const rowData = mask ? mask[row] : 0x1F;
+                for (let col = 0; col < 5; col++) {
+                    if ((rowData >> (4 - col)) & 1 || !mask) {
+                        ctx.beginPath();
+                        ctx.arc(x + col * dotSpacing + dotSize/2, y + row * dotYSpacing + dotSize/2, dotSize/2, 0, Math.PI * 2);
+                        ctx.fill();
+                    }
+                }
+            }
+        }
+
+        function drawBigSegmentDots(charIdx, x, y) {
+            const ctx = lcdContext;
+            const glyph = customChars[charIdx];
+            if (!glyph) return;
+            render5x8Dots(ctx, glyph, x + 4, y, 512 / 16 - 8, 128 / 2 - 16);
+        }
+
+        function drawBigNumber(n, startX, y0, y1) {
+            const drawDigit = (digit, xOffset) => {
+                const cellW = 512 / 16;
+                const x = startX + xOffset * cellW;
+                const layout = [
+                    [ [0,1,2],[3,4,5] ], [ [32,32,2],[32,32,5] ], [ [6,6,2],[3,7,7] ], 
+                    [ [6,6,2],[7,7,5] ], [ [3,4,2],[32,32,5] ], [ [0,6,6],[7,7,5] ], 
+                    [ [0,6,6],[3,7,5] ], [ [1,1,2],[32,0,32] ], [ [0,6,2],[3,7,5] ], [ [0,6,2],[32,7,5] ]
+                ];
+                const parts = layout[digit];
+                for(let col=0; col<3; col++) {
+                    let c0 = parts[0][col];
+                    let c1 = parts[1][col];
+                    if (c0 < 8) drawBigSegmentDots(c0, x + col * cellW, y0);
+                    if (c1 < 8) drawBigSegmentDots(c1, x + col * cellW, y1);
+                }
+            };
+            const d1 = Math.floor(n / 10);
+            const d2 = n % 10;
+            drawDigit(d1, 0);
+            drawDigit(d2, 3.2);
+        }
+
+        /** * EVENTOS E INTERAÇÃO */
+        function togglePower() {
+            powerOn = !powerOn;
+            if (powerOn) {
+                // LIGA (Aponta para baixo / +Math.PI / 5)
+                toggleLever.parent.rotation.x = Math.PI / 5; 
+                bootState = 0;
+                shuffle(anArray);
+                numsort = -1;
+                number = 0;
+                setTimeout(() => { if (powerOn) { bootState = 1; drawLCD(); } }, 2500);
+            } else {
+                // DESLIGA (Aponta para cima / -Math.PI / 5)
+                toggleLever.parent.rotation.x = -Math.PI / 5; 
+                bootState = -1;
+            }
+            drawLCD();
+        }
+
+        function handleButtonClick() {
+            if (!powerOn) return;
+            encoderKnob.position.z = 0.25;
+            setTimeout(() => encoderKnob.position.z = 0.4, 100);
+
+            if (bootState === 1) {
+                bootState = 2;
+                numsort = 0;
+                number = 0;
+            } else if (bootState === 2) {
+                if (numsort < 74) {
+                    numsort++;
+                    number = numsort;
+                }
+            }
+            drawLCD();
+        }
+
+        function onWheel(dir) {
+            if (!powerOn || bootState !== 2) return;
+            encoderKnob.rotation.y += dir * 0.4;
+            const next = number - dir;
+            if (next >= 0 && next <= numsort) {
+                number = next;
+                drawLCD();
+            }
+        }
+
+        function onDown(e) {
+            isDown = true;
+            lastX = e.clientX; lastY = e.clientY;
+            const mouse = new THREE.Vector2((e.clientX/window.innerWidth)*2-1, -(e.clientY/window.innerHeight)*2+1);
+            const raycaster = new THREE.Raycaster();
+            raycaster.setFromCamera(mouse, camera);
+            
+            const intersects = raycaster.intersectObjects(scene.children, true);
+            for(let intersect of intersects) {
+                if (intersect.object === encoderKnob) {
+                    handleButtonClick();
+                    isDown = false;
+                    break;
+                }
+                let isSwitch = false;
+                let cur = intersect.object;
+                while(cur) {
+                    if (cur.name === "power_switch" || cur.name === "power_switch_handle") {
+                        isSwitch = true;
+                        break;
+                    }
+                    cur = cur.parent;
+                }
+                
+                if (isSwitch) {
+                    togglePower();
+                    isDown = false;
+                    break;
+                }
+            }
+        }
+
+        function onMove(e) {
+            if (isDown) {
+                targetRot.y += (e.clientX - lastX) * 0.01;
+                targetRot.x += (e.clientY - lastY) * 0.01;
+                lastX = e.clientX; lastY = e.clientY;
+            }
+        }
+
+        function onResize() {
+            camera.aspect = window.innerWidth / window.innerHeight;
+            camera.updateProjectionMatrix();
+            renderer.setSize(window.innerWidth, window.innerHeight);
+        }
+
+        function animate() {
+            requestAnimationFrame(animate);
+            box.rotation.y += (targetRot.y - box.rotation.y) * 0.1;
+            box.rotation.x += (targetRot.x - box.rotation.x) * 0.1;
+            renderer.render(scene, camera);
+        }
+
+        window.onload = init3D;
+    </script>
+</body>
+</html>

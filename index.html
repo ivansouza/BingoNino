@@ -66,11 +66,13 @@
     <div class="controls-hint">
         <b>Interruptor:</b> Cima (Off) / Baixo (On) | <b>Rato/Touch:</b> Rodar Câmara<br>
         <b>Encoder:</b> Arraste Vertical (Girar) ou Clique (Sortear)<br>
+        <b>Zoom:</b> Roda do Rato ou Gesto de Pinça no Celular<br>
         Projeto: <a href="https://github.com/ivansouza/BingoNino/" target="_blank">https://github.com/ivansouza/BingoNino/</a><br>
         <button class="btn-save" id="btn-save-view">Gravar Vista Atual</button>
         <div id="status-msg"></div>
     </div>
 
+    <!-- Importação de Módulos -->
     <script type="module">
         import * as THREE from "https://cdn.jsdelivr.net/npm/three@0.128.0/build/three.module.js";
 
@@ -115,6 +117,10 @@
         let targetRot = { x: 0.4, y: -0.5 };
         let isDown = false, isDraggingEncoder = false, lastX, lastY, startDragY;
         let dragAccumulator = 0;
+        
+        // Suporte para Mobile (Multitouch)
+        const activePointers = new Map();
+        let prevPinchDistance = -1;
 
         function shuffle(array) {
             for (let i = array.length - 1; i > 0; i--) {
@@ -162,19 +168,16 @@
             fillLight.position.set(-10, 0, 10);
             scene.add(fillLight);
 
-            // GABINETE
             const boxGeom = new THREE.BoxGeometry(8, 5.5, 2.5);
             const boxMat = new THREE.MeshPhongMaterial({ color: 0x1a1a1a, shininess: 40, specular: 0x333333 });
             box = new THREE.Mesh(boxGeom, boxMat);
             scene.add(box);
 
-            // LCD
             const canvas = document.createElement('canvas');
             canvas.width = 512; canvas.height = 128;
             lcdContext = canvas.getContext('2d');
             lcdTexture = new THREE.CanvasTexture(canvas);
             
-            // MOLDURA DO LCD (Bezel) - PROTUBERANTE
             const bezelDepth = 0.6;
             const bezel = new THREE.Mesh(
                 new THREE.BoxGeometry(6.2, 2.2, bezelDepth),
@@ -183,16 +186,13 @@
             bezel.position.set(0, 1.3, 1.25); 
             box.add(bezel);
 
-            // LCD MESH
             lcdMesh = new THREE.Mesh(
                 new THREE.PlaneGeometry(5.6, 1.6),
                 new THREE.MeshLambertMaterial({ map: lcdTexture, emissive: 0x000000, emissiveIntensity: 0.0 })
             );
-            // Posicionado na face frontal do bezel
             lcdMesh.position.set(0, 1.3, 1.25 + (bezelDepth / 2) + 0.01); 
             box.add(lcdMesh);
 
-            // ENCODER
             const encGroup = new THREE.Group();
             encGroup.position.set(1.5, -1.3, 1.25);
             box.add(encGroup);
@@ -207,7 +207,6 @@
             indicator.position.set(0, 0.45, 0.35);
             encoderKnob.add(indicator);
 
-            // INTERRUPTOR LIGA/DESLIGA
             const powerGroup = new THREE.Group();
             powerGroup.position.set(-1.8, -1.3, 1.25);
             box.add(powerGroup);
@@ -229,13 +228,14 @@
             toggleLever = new THREE.Mesh(new THREE.CylinderGeometry(0.06, 0.12, 0.75, 16), new THREE.MeshPhongMaterial({ color: 0xcc0000, shininess: 150, specular: 0xff4444 }));
             toggleLever.rotation.x = Math.PI / 2; toggleLever.position.z = 0.3;
             leverContainer.add(toggleLever);
-            leverContainer.rotation.x = -Math.PI / 5; // Posição OFF inicial
+            leverContainer.rotation.x = -Math.PI / 5; 
             leverContainer.name = "power_switch"; toggleLever.name = "power_switch_handle";
 
-            // Eventos
+            // Eventos unificados (Pointer)
             window.addEventListener('pointerdown', onDown);
             window.addEventListener('pointermove', onMove);
             window.addEventListener('pointerup', onUp);
+            window.addEventListener('pointercancel', onUp);
             window.addEventListener('wheel', onWheel, { passive: false });
             window.addEventListener('resize', onResize);
             document.getElementById('btn-save-view').addEventListener('click', saveView);
@@ -337,8 +337,8 @@
         function onWheel(e) { 
             e.preventDefault(); 
             if (!powerOn || bootState !== 2) {
-                camera.position.z += e.deltaY * 0.01;
-                camera.position.z = Math.max(5, Math.min(30, camera.position.z));
+                const factor = e.deltaY * 0.01;
+                camera.position.z = Math.max(5, Math.min(30, camera.position.z + factor));
                 return;
             } 
             const dir = e.deltaY > 0 ? 1 : -1;
@@ -346,27 +346,49 @@
         }
 
         function onDown(e) {
-            lastX = e.clientX; lastY = e.clientY;
-            const mouse = new THREE.Vector2((e.clientX/window.innerWidth)*2-1, -(e.clientY/window.innerHeight)*2+1);
-            const raycaster = new THREE.Raycaster(); raycaster.setFromCamera(mouse, camera);
-            const intersects = raycaster.intersectObjects(scene.children, true);
-            let hitTarget = null;
-            for(let intersect of intersects) {
-                let cur = intersect.object;
-                while(cur) { 
-                    if (cur === encoderKnob) { hitTarget = "encoder"; break; } 
-                    if (cur.name === "power_switch" || cur.name === "power_switch_handle") { hitTarget = "switch"; break; } 
-                    cur = cur.parent; 
+            activePointers.set(e.pointerId, e);
+            
+            if (activePointers.size === 1) {
+                lastX = e.clientX; lastY = e.clientY;
+                const mouse = new THREE.Vector2((e.clientX/window.innerWidth)*2-1, -(e.clientY/window.innerHeight)*2+1);
+                const raycaster = new THREE.Raycaster(); raycaster.setFromCamera(mouse, camera);
+                const intersects = raycaster.intersectObjects(scene.children, true);
+                let hitTarget = null;
+                for(let intersect of intersects) {
+                    let cur = intersect.object;
+                    while(cur) { 
+                        if (cur === encoderKnob) { hitTarget = "encoder"; break; } 
+                        if (cur.name === "power_switch" || cur.name === "power_switch_handle") { hitTarget = "switch"; break; } 
+                        cur = cur.parent; 
+                    }
+                    if (hitTarget) break;
                 }
-                if (hitTarget) break;
+                if (hitTarget === "encoder") { isDraggingEncoder = true; startDragY = e.clientY; dragAccumulator = 0; isDown = false; }
+                else if (hitTarget === "switch") { togglePower(); isDown = false; }
+                else { isDown = true; }
+            } else if (activePointers.size === 2) {
+                // Inicia zoom multitoque
+                const pointers = Array.from(activePointers.values());
+                prevPinchDistance = Math.hypot(pointers[0].clientX - pointers[1].clientX, pointers[0].clientY - pointers[1].clientY);
+                isDown = false;
+                isDraggingEncoder = false;
             }
-            if (hitTarget === "encoder") { isDraggingEncoder = true; startDragY = e.clientY; dragAccumulator = 0; isDown = false; }
-            else if (hitTarget === "switch") { togglePower(); isDown = false; }
-            else { isDown = true; }
         }
 
         function onMove(e) {
-            if (isDraggingEncoder) { 
+            activePointers.set(e.pointerId, e);
+
+            if (activePointers.size === 2) {
+                // Lógica de Pinch-to-Zoom
+                const pointers = Array.from(activePointers.values());
+                const dist = Math.hypot(pointers[0].clientX - pointers[1].clientX, pointers[0].clientY - pointers[1].clientY);
+                
+                if (prevPinchDistance > 0) {
+                    const delta = (prevPinchDistance - dist) * 0.05;
+                    camera.position.z = Math.max(5, Math.min(30, camera.position.z + delta));
+                }
+                prevPinchDistance = dist;
+            } else if (isDraggingEncoder) { 
                 const deltaY = e.clientY - lastY; dragAccumulator += deltaY; 
                 if (Math.abs(dragAccumulator) > 20) { 
                     const dir = dragAccumulator > 0 ? 1 : -1; rotateEncoder(dir); dragAccumulator = 0; 
@@ -380,6 +402,9 @@
         }
 
         function onUp(e) { 
+            activePointers.delete(e.pointerId);
+            if (activePointers.size < 2) prevPinchDistance = -1;
+
             if (isDraggingEncoder && Math.abs(e.clientY - startDragY) < 5) { 
                 if (powerOn) { 
                     encoderKnob.position.z = 0.25; setTimeout(() => encoderKnob.position.z = 0.4, 100); 
